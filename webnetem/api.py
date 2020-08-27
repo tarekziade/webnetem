@@ -3,7 +3,8 @@ import subprocess
 import shlex
 import platform
 
-from webnetem.netimpair import NetemInstance
+from webnetem.linux import LinuxThrottler
+from webnetem.macos import MacosThrottler
 
 
 app = Quart(__name__)
@@ -26,12 +27,17 @@ async def reset():
 
 
 if __name__ == "__main__":
-    if platform.system() != "Linux":
+    system = platform.system()
+    if system == "Linux":
+        klass = LinuxThrottler
+    elif system == "Darwin":
+        klass = MacosThrottler
+    else:
         raise Exception("Linux only")
     nic = "eth0"
     inbound = True
     include = []
     exclude = ["dport=22", "sport=22"]
-    netem = NetemInstance(nic, inbound, include, exclude, app.logger)
+    netem = klass(nic, inbound, include, exclude, app.logger)
     netem.initialize()
     app.run()

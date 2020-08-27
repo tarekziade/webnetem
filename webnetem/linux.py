@@ -34,17 +34,11 @@ import sys
 import time
 import traceback
 
+from webnetem.throttler import Throttler
 
-class NetemInstance(object):
+
+class LinuxThrottler(Throttler):
     """Wrapper around netem module and tc command."""
-
-    def __init__(self, nic, inbound, include, exclude, logger):
-        self.inbound = inbound
-        self.include = include if include else ["src=0/0", "src=::/0"]
-        self.exclude = exclude
-        self.nic = "ifb1" if inbound else nic
-        self.real_nic = nic
-        self.logger = logger
 
     @staticmethod
     def _call(command):
