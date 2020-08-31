@@ -17,6 +17,8 @@ class LinuxThrottler(Throttler):
         return self.status
 
     def shape(self, options):
+        if self.status["throttling"]:
+            self.teardown()
         self.netem.netem(
             loss_ratio=int(options.get("loss_ratio", 0)),
             loss_corr=int(options.get("loss_corr", 0)),
@@ -28,4 +30,5 @@ class LinuxThrottler(Throttler):
             reorder_corr=int(options.get("reorder_corr", 0)))
 
         self.status.update(options)
+        self.status["throttling"] = True
         return self.status
