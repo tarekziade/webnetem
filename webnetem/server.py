@@ -39,7 +39,7 @@ def main():
     netem = klass(nic, inbound, include, exclude, app.logger)
     netem.initialize()
     app.throttler = netem
-    app.run(port=8888)
+    app.run(host="0.0.0.0", port=8888)
 
 
 if __name__ == "__main__":
