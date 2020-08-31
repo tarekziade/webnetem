@@ -31,6 +31,7 @@ setup(
     install_requires=install_requires,
     entry_points="""
     [console_scripts]
-    webnetem = webnetem.server:main
+    webnetem-server = webnetem.server:main
+    webnetem-client = webnetem.client:main
     """,
 )

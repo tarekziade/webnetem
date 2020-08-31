@@ -100,7 +100,7 @@ class NetemInstance(object):
         '''Set up traffic control.'''
         if self.inbound:
             # Create virtual ifb device to do inbound impairment on
-            self._check_call('modprobe ifb')
+            self._check_call('/sbin/modprobe ifb')
             self._check_call('ip link set dev {0} up'.format(self.nic))
             # Delete ingress device before trying to add
             self._call('tc qdisc del dev {0} ingress'.format(self.real_nic))
@@ -229,7 +229,7 @@ class NetemInstance(object):
                 'tc filter del dev {0} parent ffff: protocol ip prio 1'.format(
                     self.real_nic))
             self._call('tc qdisc del dev {0} ingress'.format(self.real_nic))
-            self._call('ip link set dev ifb0 down')
+            self._call(f'ip link set dev {self.nic} down')
         self._call('tc qdisc del root dev {0}'.format(self.nic))
         print('Network impairment teardown complete.')
 
