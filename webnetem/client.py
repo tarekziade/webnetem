@@ -7,18 +7,19 @@ _SERVER = "http://localhost:8888"
 actions =  {}
 
 def status(options):
-    return requests.get(options["server"]).json()
+    return requests.get(options["server"], verify=not options["insecure"]).json()
 
 actions["status"] = status
 
 
 def reset(options):
-    return requests.get(options["server"] + "/reset").json()
+    return requests.get(options["server"] + "/reset", verify=not options["insecure"]).json()
 
 actions["reset"] = reset
 
 def shape(options):
-    return requests.post(options["server"] + "/shape", json=options).json()
+    return requests.post(options["server"] + "/shape",
+            verify=not options["insecure"], json=options).json()
 
 actions["shape"] = shape
 
@@ -31,6 +32,12 @@ def parse_args():
         '-s', '--server',
         default=_SERVER,
         help='endpoint')
+
+    argparser.add_argument(
+        '-k', '--insecure',
+        default=False,
+        action="store_true",
+        help='verify https certificate')
 
     subparsers = argparser.add_subparsers(
         title='impairments',
