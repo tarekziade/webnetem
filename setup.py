@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 if sys.version_info < (3, 6):
     raise ValueError("Requires Python 3.6 or superior")
 
-install_requires = ["quart"]
+install_requires = ["quart", "requests"]
 description = ""
 
 
@@ -30,6 +30,7 @@ setup(
     classifiers=classifiers,
     install_requires=install_requires,
     entry_points="""
-      [console_scripts]
-      """,
+    [console_scripts]
+    webnetem = webnetem.server:main
+    """,
 )

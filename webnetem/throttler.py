@@ -11,6 +11,7 @@ class Throttler:
         if logger is None:
             logger = logging.getLogger("webnetem")
         self.logger = logger
+        self.status = {"throttling": False}
 
     def initialize(self):
         pass

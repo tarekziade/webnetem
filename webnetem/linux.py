@@ -1,5 +1,5 @@
 # taken from https://github.com/urbenlegend/netimpair/
-# and modified
+# and heavily modified
 
 """
 The MIT License (MIT)
@@ -24,34 +24,17 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-import argparse
 import datetime
-import os
-import shlex
-import signal
-import subprocess
 import sys
-import time
-import traceback
 
 from webnetem.throttler import Throttler
+from webnetem.utils import call, check_call
 
 
 class LinuxThrottler(Throttler):
     """Wrapper around netem module and tc command."""
 
-    @staticmethod
-    def _call(command):
-        """Run command."""
-        subprocess.call(shlex.split(command))
-
-    @staticmethod
-    def _check_call(command):
-        """Run command, raising CalledProcessError if it fails."""
-        subprocess.check_call(shlex.split(command))
-
-    @staticmethod
-    def _generate_filters(filter_list):
+    def _generate_filters(self, filter_list):
         filter_strings = []
         filter_strings_ipv6 = []
         for tcfilter in filter_list:
@@ -92,70 +75,66 @@ class LinuxThrottler(Throttler):
         """Set up traffic control."""
         if self.inbound:
             # Create virtual ifb device to do inbound impairment on
-            self._check_call("modprobe ifb")
-            self._check_call("ip link set dev {0} up".format(self.nic))
+            check_call("/sbin/modprobe ifb")
+            check_call(f"ip link set dev {self.nic} up")
             # Delete ingress device before trying to add
-            self._call("tc qdisc del dev {0} ingress".format(self.real_nic))
+            call(f"tc qdisc del dev {self.real_nic} ingress")
             # Add ingress device
-            self._check_call("tc qdisc replace dev {0} ingress".format(self.real_nic))
+            check_call(f"tc qdisc replace dev {self.real_nic} ingress")
             # Add filter to redirect ingress to virtual ifb device
-            self._check_call(
-                "tc filter replace dev {0} parent ffff: protocol ip prio 1 "
+            check_call(
+                f"tc filter replace dev {self.real_nic} parent ffff: protocol ip prio 1 "
                 "u32 match u32 0 0 flowid 1:1 action mirred egress redirect "
-                "dev {1}".format(self.real_nic, self.nic)
+                f"dev {self.nic}"
             )
 
         # Delete network impairments from any previous runs of this script
-        self._call("tc qdisc del root dev {0}".format(self.nic))
+        call(f"tc qdisc del root dev {self.nic}")
 
         # Create prio qdisc so we can redirect some traffic to be unimpaired
-        self._check_call("tc qdisc add dev {0} root handle 1: prio".format(self.nic))
+        check_call(f"tc qdisc add dev {self.nic} root handle 1: prio")
 
         # Apply selective impairment based on include and exclude parameters
         self.logger.info("Including the following for network impairment:")
         include_filters, include_filters_ipv6 = self._generate_filters(self.include)
         for filter_string in include_filters:
             include_filter = (
-                "tc filter add dev {0} protocol ip parent 1:0 "
-                "prio 3 u32 {1}flowid 1:3".format(self.nic, filter_string)
+                f"tc filter add dev {self.nic} protocol ip parent 1:0 "
+                f"prio 3 u32 {filter_string}flowid 1:3"
             )
-            self.logger.info(include_filter)
-            self._check_call(include_filter)
+            check_call(include_filter)
 
         for filter_string_ipv6 in include_filters_ipv6:
             include_filter_ipv6 = (
-                "tc filter add dev {0} protocol ipv6 "
-                "parent 1:0 prio 4 u32 {1}flowid 1:3".format(
-                    self.nic, filter_string_ipv6
-                )
+                f"tc filter add dev {self.nic} protocol ipv6 "
+                f"parent 1:0 prio 4 u32 {filter_string_ipv6}flowid 1:3"
             )
-            self.logger.info(include_filter_ipv6)
-            self._check_call(include_filter_ipv6)
-        self.logger.info()
+            check_call(include_filter_ipv6)
 
         self.logger.info("Excluding the following from network impairment:")
         exclude_filters, exclude_filters_ipv6 = self._generate_filters(self.exclude)
         for filter_string in exclude_filters:
             exclude_filter = (
-                "tc filter add dev {0} protocol ip parent 1:0 "
-                "prio 1 u32 {1}flowid 1:2".format(self.nic, filter_string)
+                f"tc filter add dev {self.nic} protocol ip parent 1:0 "
+                f"prio 1 u32 {filter_string}flowid 1:2"
             )
-            self.logger.info(exclude_filter)
-            self._check_call(exclude_filter)
+            check_call(exclude_filter)
 
         for filter_string_ipv6 in exclude_filters_ipv6:
             exclude_filter_ipv6 = (
-                "tc filter add dev {0} protocol ipv6 "
-                "parent 1:0 prio 2 u32 {1}flowid 1:2".format(
-                    self.nic, filter_string_ipv6
-                )
+                f"tc filter add dev {self.nic} protocol ipv6 "
+                f"parent 1:0 prio 2 u32 {filter_string_ipv6}flowid 1:2"
             )
-            self.logger.info(exclude_filter_ipv6)
-            self._check_call(exclude_filter_ipv6)
-        self.logger.info()
+            check_call(exclude_filter_ipv6)
 
-    # pylint: disable=too-many-arguments
-    def netem(
+    def shape(self, options):
+        # decide here if we call _netem or _rate
+        self.logger.info("Setting network impairment:")
+        self._start_packet_loss()
+
+        return self.status
+
+    def _start_packet_loss(
         self,
         loss_ratio=0,
         loss_corr=0,
@@ -167,91 +146,50 @@ class LinuxThrottler(Throttler):
         reorder_corr=0,
         toggle=None,
     ):
-        """Enable packet loss."""
-        if toggle is None:
-            toggle = [1000000]
-        self._check_call(
-            "tc qdisc add dev {0} parent 1:3 handle 30: netem".format(self.nic)
+        """Enable packet loss.
+        """
+        check_call(f"tc qdisc add dev {self.nic} parent 1:3 handle 30: netem")
+        impair_cmd = (
+            f"tc qdisc change dev {self.nic} parent 1:3 handle 30: "
+            f"netem loss {loss_ratio}% {loss_corr}% duplicate {dup_ratio}% "
+            f"delay {delay}ms {jitter}ms {delay_jitter_corr}% "
+            f"reorder {reorder_ratio}% {reorder_corr}%"
         )
-        while toggle:
-            impair_cmd = (
-                "tc qdisc change dev {0} parent 1:3 handle 30: "
-                "netem loss {1}% {2}% duplicate {3}% delay {4}ms {5}ms {6}% "
-                "reorder {7}% {8}%".format(
-                    self.nic,
-                    loss_ratio,
-                    loss_corr,
-                    dup_ratio,
-                    delay,
-                    jitter,
-                    delay_jitter_corr,
-                    reorder_ratio,
-                    reorder_corr,
-                )
-            )
-            self.logger.info("Setting network impairment:")
-            self.logger.info(impair_cmd)
-            # Set network impairment
-            self._check_call(impair_cmd)
-            self.logger.info(
-                "Impairment timestamp: {0}".format(datetime.datetime.today())
-            )
-            time.sleep(toggle.pop(0))
-            if not toggle:
-                return
-            self._check_call(
-                "tc qdisc change dev {0} parent 1:3 handle 30: netem".format(self.nic)
-            )
-            self.logger.info(
-                "Impairment stopped timestamp: {0}".format(datetime.datetime.today())
-            )
-            time.sleep(toggle.pop(0))
+        # Set network impairment
+        check_call(impair_cmd)
 
-    def rate(self, limit=0, buffer_length=2000, latency=20, toggle=None):
-        """Enable packet reorder."""
-        if toggle is None:
-            toggle = [1000000]
-        self._check_call(
-            "tc qdisc add dev {0} parent 1:3 handle 30: tbf rate 1000mbit "
-            "buffer {1} latency {2}ms".format(self.nic, buffer_length, latency)
+    def _stop_packet_loss(self):
+        check_call(f"tc qdisc change dev {self.nic} parent 1:3 handle 30: netem")
+        self.logger.info(f"Impairment stopped timestamp: {datetime.datetime.today()}")
+
+    def _start_packet_reorder(
+        self, limit=0, buffer_length=2000, latency=20, toggle=None
+    ):
+        """Enable packet reorder.
+        """
+        check_call(
+            f"tc qdisc add dev {self.nic} parent 1:3 handle 30: tbf rate 1000mbit "
+            f"buffer {buffer_length} latency {latency}ms"
         )
-        while toggle:
-            impair_cmd = (
-                "tc qdisc change dev {0} parent 1:3 handle 30: tbf "
-                "rate {1}kbit buffer {2} latency {3}ms".format(
-                    self.nic, limit, buffer_length, latency
-                )
-            )
-            self.logger.info("Setting network impairment:")
-            self.logger.info(impair_cmd)
-            # Set network impairment
-            self._check_call(impair_cmd)
-            self.logger.info(
-                "Impairment timestamp: {0}".format(datetime.datetime.today())
-            )
-            time.sleep(toggle.pop(0))
-            if not toggle:
-                return
-            self._check_call(
-                "tc qdisc change dev {0} parent 1:3 handle 30: tbf rate "
-                "1000mbit buffer {1} latency {2}ms".format(
-                    self.nic, buffer_length, latency
-                )
-            )
-            self.logger.info(
-                "Impairment stopped timestamp: {0}".format(datetime.datetime.today())
-            )
-            time.sleep(toggle.pop(0))
+        impair_cmd = (
+            f"tc qdisc change dev {self.nic} parent 1:3 handle 30: tbf "
+            f"rate {limit}kbit buffer {buffer_length} latency {latency}ms"
+        )
+        # Set network impairment
+        check_call(impair_cmd)
+
+    def _stop_packet_reorder(self):
+        check_call(
+            f"tc qdisc change dev {self.nic} parent 1:3 handle 30: tbf rate "
+            f"1000mbit buffer {buffer_length} latency {latency}ms"
+        )
+        self.logger.info(f"Impairment stopped timestamp: {datetime.datetime.today()}")
 
     def teardown(self):
         """Reset traffic control rules."""
         if self.inbound:
-            self._call(
-                "tc filter del dev {0} parent ffff: protocol ip prio 1".format(
-                    self.real_nic
-                )
-            )
-            self._call("tc qdisc del dev {0} ingress".format(self.real_nic))
-            self._call("ip link set dev ifb0 down")
-        self._call("tc qdisc del root dev {0}".format(self.nic))
+            call(f"tc filter del dev {self.real_nic} parent ffff: protocol ip prio 1")
+            call(f"tc qdisc del dev {self.real_nic} ingress")
+            call("ip link set dev ifb0 down")
+        call("tc qdisc del root dev {self.nic}")
         self.logger.info("Network impairment teardown complete.")

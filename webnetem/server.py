@@ -1,7 +1,5 @@
-from quart import Quart
-import subprocess
-import shlex
 import platform
+from quart import Quart, request
 
 from webnetem.linux import LinuxThrottler
 from webnetem.macos import MacosThrottler
@@ -12,21 +10,21 @@ app = Quart(__name__)
 
 @app.route("/")
 async def index():
-    return {}
+    return app.throttler.status
 
 
 @app.route("/shape", methods=["POST"])
 async def shape():
-    return {}
+    data = await request.get_json()
+    return app.throttler.shape(data)
 
 
 @app.route("/reset")
 async def reset():
-    netem.teardown()
-    return {"result": "OK"}
+    return app.throttler.teardown()
 
 
-if __name__ == "__main__":
+def main():
     system = platform.system()
     if system == "Linux":
         klass = LinuxThrottler
@@ -40,4 +38,9 @@ if __name__ == "__main__":
     exclude = ["dport=22", "sport=22"]
     netem = klass(nic, inbound, include, exclude, app.logger)
     netem.initialize()
-    app.run()
+    app.throttler = netem
+    app.run(port=8888)
+
+
+if __name__ == "__main__":
+    main()
