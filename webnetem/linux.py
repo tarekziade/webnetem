@@ -7,7 +7,6 @@ class LinuxThrottler(Throttler):
     def initialize(self):
         self.netem = NetemInstance(
             self.nic, self.inbound, self.include, self.exclude)
-        self.netem.initialize()
         return {}
 
     def teardown(self):
@@ -18,7 +17,11 @@ class LinuxThrottler(Throttler):
 
     def shape(self, options):
         if self.status["throttling"]:
-            self.teardown()
+            try:
+                self.teardown()
+            except Exception:
+                pass
+        self.netem.initialize()
         self.netem.netem(
             loss_ratio=int(options.get("loss_ratio", 0)),
             loss_corr=int(options.get("loss_corr", 0)),
