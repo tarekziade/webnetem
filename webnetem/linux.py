@@ -3,10 +3,8 @@ from webnetem.netimpair import NetemInstance
 
 
 class LinuxThrottler(Throttler):
-
     def initialize(self):
-        self.netem = NetemInstance(
-            self.nic, self.inbound, self.include, self.exclude)
+        self.netem = NetemInstance(self.nic, self.inbound, self.include, self.exclude)
         return {}
 
     def teardown(self):
@@ -30,7 +28,8 @@ class LinuxThrottler(Throttler):
             jitter=int(options.get("jitter", 0)),
             delay_jitter_corr=int(options.get("delay_jitter_corr", 0)),
             reorder_ratio=int(options.get("reorder_ratio", 0)),
-            reorder_corr=int(options.get("reorder_corr", 0)))
+            reorder_corr=int(options.get("reorder_corr", 0)),
+        )
 
         self.status.update(options)
         self.status["throttling"] = True
